@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './contexts/AuthContext'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import Layout from './components/layout/Layout'
 import Login from './pages/auth/Login'
@@ -13,8 +13,20 @@ import Account from './pages/Account'
 import Policies from './pages/Policies'
 import PolicyDetail from './pages/PolicyDetail'
 import AdminDashboard from './pages/admin/AdminDashboard'
+import SupabaseSetup from './pages/SupabaseSetup'
+import { isSupabaseConfigured } from './lib/supabase'
 
 function AppRoutes() {
+  const { supabaseReady, initialized } = useAuth()
+
+  if (!initialized) {
+    return null
+  }
+
+  if (!isSupabaseConfigured || !supabaseReady) {
+    return <Route path="*" element={<SupabaseSetup />} />
+  }
+
   return (
     <Routes>
       {/* Public Routes */}

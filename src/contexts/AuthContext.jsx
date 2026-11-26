@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
-import { getCurrentUser } from '../lib/supabase'
+import { supabase, isSupabaseConfigured, getSupabaseClient } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
@@ -9,10 +8,13 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
+  const [supabaseReady, setSupabaseReady] = useState(isSupabaseConfigured)
 
   const fetchProfile = useCallback(async (userId) => {
+    const client = getSupabaseClient()
+    if (!client) return
     try {
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -35,9 +37,22 @@ export const AuthProvider = ({ children }) => {
   }, [user, fetchProfile])
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false)
+      setInitialized(true)
+      setSupabaseReady(false)
+      return
+    }
+
     const initAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const client = getSupabaseClient()
+        if (!client) {
+          setSupabaseReady(false)
+          return
+        }
+        setSupabaseReady(true)
+        const { data: { session } } = await client.auth.getSession()
         if (session?.user) {
           setUser(session.user)
           await fetchProfile(session.user.id)
@@ -52,7 +67,13 @@ export const AuthProvider = ({ children }) => {
 
     initAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const client = getSupabaseClient()
+    if (!client) {
+      setSupabaseReady(false)
+      return
+    }
+
+    const { data: { subscription } } = client.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user)
         await fetchProfile(session.user.id)
@@ -67,17 +88,23 @@ export const AuthProvider = ({ children }) => {
   }, [fetchProfile])
 
   const signUp = async (email, password) => {
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const client = getSupabaseClient()
+    if (!client) return { data: null, error: { message: 'Supabase not configured' } }
+    const { data, error } = await client.auth.signUp({ email, password })
     return { data, error }
   }
 
   const signIn = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const client = getSupabaseClient()
+    if (!client) return { data: null, error: { message: 'Supabase not configured' } }
+    const { data, error } = await client.auth.signInWithPassword({ email, password })
     return { data, error }
   }
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
+    const client = getSupabaseClient()
+    if (!client) return { error: { message: 'Supabase not configured' } }
+    const { error } = await client.auth.signOut()
     if (!error) {
       setUser(null)
       setProfile(null)
@@ -86,8 +113,9 @@ export const AuthProvider = ({ children }) => {
   }
 
   const updateProfile = async (updates) => {
-    if (!user) return { error: { message: 'No user logged in' } }
-    const { data, error } = await supabase
+    const client = getSupabaseClient()
+    if (!client || !user) return { error: { message: 'Supabase not configured' } }
+    const { data, error } = await client
       .from('profiles')
       .update(updates)
       .eq('id', user.id)
@@ -104,6 +132,7 @@ export const AuthProvider = ({ children }) => {
     profile,
     loading,
     initialized,
+    supabaseReady,
     signUp,
     signIn,
     signOut,
